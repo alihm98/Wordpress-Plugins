@@ -13,7 +13,7 @@ Affiche l’aperçu d’un article dans une lightbox.
 
 More Embeds 0.1
 ------------------------
-Add provider for « Auto-Embed » feature (currently only Wat.tv).  
+Add provider for “Auto-Embed” feature (currently only Wat.tv).  
 [Voir le code source](http://github.com/cedbv/Wordpress-Plugins/tree/master/more-embeds/) - [Télécharger](http://github.com/cedbv/Wordpress-Plugins/raw/master/download/more-embeds.zip)
 
 Multisite Restore Features 0.1
@@ -23,7 +23,7 @@ Activate post by mail and custom ping sites in a multisite configuration.
 
 Multisite Switcher 1.0
 ------------------------
-Fast switch between sites administration installed on the same « network ».  
+Fast switch between sites administration installed on the same “network”.  
 [Voir le code source](http://github.com/cedbv/Wordpress-Plugins/tree/master/multisite-switcher/) - [Télécharger](http://github.com/cedbv/Wordpress-Plugins/raw/master/download/multisite-switcher.zip)
 
 Pending Posts Widget 0.1
@@ -51,9 +51,9 @@ Restrict Access 0.2
 Oblige à résoudre une énigme avant d’autoriser l’accès au blog.  
 [Voir le code source](http://github.com/cedbv/Wordpress-Plugins/tree/master/restricted-access/) - [Télécharger](http://github.com/cedbv/Wordpress-Plugins/raw/master/download/restricted-access.zip)
 
-SideBlogging 0.3-dev
+SideBlogging 0.7.1
 ------------------------
-Display asides in a widget. They can automatically be published to Twitter and Facebook.  
+Display asides in a widget. They can automatically be published to Twitter, Facebook, and any Status.net installation (like identi.ca).  
 [Voir le code source](http://github.com/cedbv/Wordpress-Plugins/tree/master/sideblogging/) - [Télécharger](http://github.com/cedbv/Wordpress-Plugins/raw/master/download/sideblogging.zip)
 
 Skyrock Blog Importer 0.1
