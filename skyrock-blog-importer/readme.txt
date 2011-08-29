@@ -10,15 +10,13 @@ Import posts, tags, comments, images and videos from a Skyrock Blog (a french bl
 
 == Description ==
 
-The WordPress Importer will import the following content from a WordPress export file:
+The Skyrock Blog will import the following content from an online Skyrock Blog :
 
-* Posts, pages and other custom post types
+* Posts
+* Tags
 * Comments
-* Custom fields and post meta
-* Categories, tags and terms from custom taxonomies
-* Authors
-
-For further information and instructions please see the [Codex page on Importing Content](http://codex.wordpress.org/Importing_Content#WordPress)
+* Small definition images
+* Videos and some gadgets
 
 == Installation ==
 
