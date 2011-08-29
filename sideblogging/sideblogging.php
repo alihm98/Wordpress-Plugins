@@ -2,13 +2,13 @@
 /*
  * Plugin Name: SideBlogging
  * Plugin URI: http://blog.boverie.eu/sideblogging-des-breves-sur-votre-blog/
- * Description: Display asides in a widget. They can automatically be published to Twitter and Facebook.
- * Version: 0.3-dev
+ * Description: Display asides in a widget. They can automatically be published to Twitter, Facebook, and any Status.net installation (like identi.ca).
+ * Version: 0.7.1
  * Author: Cédric Boverie
  * Author URI: http://www.boverie.eu/
  * Text Domain: sideblogging
 */
-/* Copyright 2010  Cédric Boverie  (email : ced@boverie.eu)
+/* Copyright 2010-2011  Cédric Boverie  (email : ced@boverie.eu)
  * this program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2, as
  * published by the Free Software Foundation.
@@ -48,7 +48,7 @@ class Sideblogging {
 		
 		// Définir l'action que exécute la tâche planifiée
 		add_action('sideblogging_cron', array(&$this,'cron'));
-
+		
 		if(is_admin())
 		{
 			// Register option settings
@@ -65,8 +65,11 @@ class Sideblogging {
 			add_action('admin_head-index.php', array(&$this,'dashboard_admin_js'));
 			add_action('wp_ajax_sideblogging_widget_post', array(&$this,'ajax_action'));
 			
-			// Regenerate permalink (on every admin page, need to find better)
-			add_action('admin_init', array(&$this,'regenerate_rewrite_rules'));
+			if(isset($_GET['page']) && $_GET['page'] == 'sideblogging')
+			{
+				// Regenerate permalink
+				add_action('admin_init', array(&$this,'regenerate_rewrite_rules'));
+			}
 		}
 	}
 	
@@ -78,6 +81,12 @@ class Sideblogging {
 		{
 			$options['twitter_consumer_key'] = '57iUTYmR4uTs8Qt4gDX9Ww';
 			$options['twitter_consumer_secret'] = 'weDOZuv1dbaPffO8ZsEsVg25WPpugnIBAhlcsJeM';
+		}
+		if(empty($options['statusnet_url']) || empty($options['statusnet_consumer_key']) || empty($options['statusnet_consumer_secret']))
+		{
+			$options['statusnet_url'] = 'http://identi.ca';
+			$options['statusnet_consumer_key'] = '60ba77cf5561e1f15fadeea3dc7bb021';
+			$options['statusnet_consumer_secret'] = 'b39f9d55f380f42b96744f0143dd212d';
 		}
 		update_option('sideblogging',$options);
 	}
@@ -104,29 +113,32 @@ class Sideblogging {
 		
 		$text = '<h5>'.__('Sideblogging help',self::domain).'</h5>';
 		$text .= '<p><a target="_blank" href="http://twitter.com/apps/new">'.__('Create a Twitter application',self::domain).'</a> (<a target="_blank" href="http://www.youtube.com/watch?v=TEpR1M1R9nI">'.__('video tutorial',self::domain).'</a>)<br />';
-		$text .= '<a target="_blank" href="http://www.facebook.com/developers/apps.php">'.__('Create a Facebook application',self::domain).'</a> (<a target="_blank" href="http://www.youtube.com/watch?v=0EH2WQdnvUg">'.__('video tutorial',self::domain).'</a>)</p>';
+		$text .= '<a target="_blank" href="http://www.facebook.com/developers/apps.php">'.__('Create a Facebook application',self::domain).'</a> (<a target="_blank" href="http://www.youtube.com/watch?v=0EH2WQdnvUg">'.__('video tutorial',self::domain).'</a>)<br />';
+		$text .= '<a target="_blank" href="http://identi.ca/settings/oauthapps/new">'.__('Create a Identi.ca application',self::domain).'</a></p>';
 		
 		$text .= '<h5>'.__('About Facebook',self::domain).'</h5>';
-		$text .= '<p>'.__('For Facebook, you may need to modify the URL Connect',self::domain).'.<br />
+		$text .= '<p>'.__('For Facebook, you may need to modify the Site URL',self::domain).'.<br />
 				'.__('To do:',self::domain).'</p>
 				<ul>
 				<li>'.__('Go to application settings',self::domain).'.</li>
-				<li>'.__('Go to section <em>Connection</em>',self::domain).'.</li>
-				<li>'.sprintf(__('Put %s in the field URL Connect',self::domain),'<strong>'.get_bloginfo('url').'/</strong>').'.</li>
+				<li>'.__('Go to section <em>Web Site</em>',self::domain).'.</li>
+				<li>'.sprintf(__('Put %s in the field Site URL',self::domain),'<strong>'.get_bloginfo('url').'/</strong>').'.</li>
 				</ul>';
+				
+		$text .= '<h5>'.__('Debug',self::domain).'</h5>';
+		$text .= '<p><a href="options-general.php?page=sideblogging&amp;debug=1">'.__('Debug information',self::domain).'</a></p>';
 		add_contextual_help($screen,$text);
 	}
 	
 	function add_dashboard_widget() {
-            if(current_user_can('manage_options'))
-		wp_add_dashboard_widget('sideblogging_dashboard_widget', __('Asides',self::domain), array(&$this,'dashboard_widget'));
+		if(current_user_can('manage_options'))
+			wp_add_dashboard_widget('sideblogging_dashboard_widget', __('Asides',self::domain), array(&$this,'dashboard_widget'));
 	}
 	
 	function dashboard_widget() {
 		echo '<form id="sideblogging_dashboard_form" action="" method="post" class="dashboard-widget-control-form">';
 		wp_nonce_field('sideblogging-quickpost');
-		echo '<p style=height:20px;display:none;" id="sideblogging-status"></p>';
-		//echo '<p><label for="sideblogging-title">Statut</label><br />';
+		echo '<div style="display:none;" id="sideblogging-status"></div>';
 		echo '<textarea name="sideblogging-title" id="sideblogging-title" style="width:100%"></textarea><br />';
 		echo '<span id="sideblogging-count">140</span> '.__('characters left',self::domain).'.<br />';
 		echo '<input type="checkbox" name="sideblogging-draft" id="sideblogging-draft" />
@@ -154,7 +166,7 @@ class Sideblogging {
 					if(response == 'ok')
 					{
 						$('#sideblogging-title').val('');
-						$('#sideblogging-status').html('<strong><?php _e('Aside published',self::domain); ?>.</strong>')
+						$('#sideblogging-status').html('<p><?php _e('Aside published',self::domain); ?>.</p>')
 						.addClass('updated').removeClass('error')
 						.show(200);
 					}
@@ -164,11 +176,11 @@ class Sideblogging {
 					}
 					else
 					{
-						$('#sideblogging-status').html('<strong><?php _e('An error occurred',self::domain); ?>.</strong>')
+						$('#sideblogging-status').html('<p><?php _e('An error occurred',self::domain); ?>.</p>')
 						.addClass('error').removeClass('updated')
 						.show(200);
 					}
-					$('#sideblogging-submit').attr('disabled','');
+					$('#sideblogging-submit').removeAttr('disabled');
 				});
 				return false;
 			});
@@ -179,7 +191,6 @@ class Sideblogging {
 				var restant = 140 - count;
 				$('#sideblogging-count').html(restant);
 			});
-			
 		});
 		</script>
 		<?php
@@ -199,7 +210,7 @@ class Sideblogging {
 			echo $id;
 		else if($id  != 0) // Publication immédiate OK
 			echo 'ok';
-		else // Echeck publication
+		else // Echec publication
 			echo '0';
 		exit;
 	}
@@ -210,8 +221,8 @@ class Sideblogging {
 		{
 			require_once('libs/twitteroauth.php');
 			$options = get_option('sideblogging');
-			$connection = new TwitterOAuth($options['twitter_consumer_key'], $options['twitter_consumer_secret']);
-			$request_token = $connection->getRequestToken(SIDEBLOGGING_OAUTH_CALLBACK); // Génère des notices en cas d'erreur de connexion
+			$connection = new SidebloggingTwitterOAuth($options['twitter_consumer_key'], $options['twitter_consumer_secret']);
+			$request_token = $connection->getRequestToken(SIDEBLOGGING_OAUTH_CALLBACK.'&site=twitter'); // Génère des notices en cas d'erreur de connexion
 			if(200 == $connection->http_code)
 			{
 				$token = $request_token['oauth_token'];
@@ -229,6 +240,24 @@ class Sideblogging {
 			$options = get_option('sideblogging');
 			$url = 'https://graph.facebook.com/oauth/authorize?client_id='.$options['facebook_consumer_key'].'&redirect_uri='.SIDEBLOGGING_OAUTH_CALLBACK.'&scope=publish_stream,offline_access';
 			wp_redirect($url);
+		}
+		else if(isset($_GET['action']) && $_GET['action'] == 'connect_to_statusnet' && wp_verify_nonce($_GET['_wpnonce'],'connect_to_statusnet')) // Twitter redirection
+		{
+			require_once('libs/statusnetoauth.php');
+			$options = get_option('sideblogging');
+			$connection = new SidebloggingStatusNetOAuth($options['statusnet_url'],$options['statusnet_consumer_key'], $options['statusnet_consumer_secret']);
+			$request_token = $connection->getRequestToken(SIDEBLOGGING_OAUTH_CALLBACK.'&site=statusnet'); // Génère des notices en cas d'erreur de connexion
+			if(200 == $connection->http_code)
+			{
+				$token = $request_token['oauth_token'];
+				set_transient('oauth_token', $token, 86400);
+				set_transient('oauth_token_secret', $request_token['oauth_token_secret'], 86400);
+				
+				$url = $connection->getAuthorizeURL($token,false);
+				wp_redirect($url.'&oauth_access_type=write');
+			}
+			else
+				wp_die(__('The StatusNet installation is currently unavailable. Please check your keys or try again later.',self::domain));
 		}
 	}
 	
@@ -252,7 +281,7 @@ class Sideblogging {
 			}
 			
 			if(!$shortlink)
-				$shortlink = get_bloginfo('url').'/?p='.$post_ID;
+				$shortlink = home_url('?p='.$post_ID);
 
 			if(isset($options['twitter_token']) && !empty($options['twitter_token'])) // Twitter est configuré
 			{
@@ -262,8 +291,21 @@ class Sideblogging {
 				if(strlen($post->post_content) > 0)
 					$content .= ' '.$shortlink;
 
-				$connection = new TwitterOAuth($options['twitter_consumer_key'], $options['twitter_consumer_secret'],
+				$connection = new SidebloggingTwitterOAuth($options['twitter_consumer_key'], $options['twitter_consumer_secret'],
 							$options['twitter_token']['oauth_token'],$options['twitter_token']['oauth_token_secret']);
+				$connection->post('statuses/update', array('status' => $content));
+			}
+
+			if(isset($options['statusnet_token']) && !empty($options['statusnet_token'])) // StatusNet est configuré
+			{
+				require_once 'libs/statusnetoauth.php';
+				$content = $post->post_title;
+				
+				if(strlen($post->post_content) > 0)
+					$content .= ' '.$shortlink;
+
+				$connection = new SidebloggingStatusNetOAuth($options['statusnet_url'], $options['statusnet_consumer_key'], $options['statusnet_consumer_secret'],
+							$options['statusnet_token']['oauth_token'],$options['statusnet_token']['oauth_token_secret']);
 				$connection->post('statuses/update', array('status' => $content));
 			}
 			
@@ -272,13 +314,57 @@ class Sideblogging {
 				$body = $options['facebook_token']['access_token'].'&message='.$post->post_title;
 				
 				if(strlen($post->post_content) > 0)
-					$body .= '&link='.$permalink;
-
+				{
+					$body .= ' '.$shortlink;
+					$body .= '&link='.$shortlink;
+				}
+				
+				// Recherche des images dans le post
+				// OLD : preg_match('/<img\W*src="([^"]*)".*>/U', $post->post_content, $matches);
+				preg_match('#<\s*img [^\>]*src\s*=\s*(["\'])(.*?)\1#im', $post->post_content, $matches);
+				if(isset($matches[2]))
+					$body .= '&picture='.$matches[2];
+					
+				// oEmbed sur les liens titre + post
+				if(!isset($matches[2]) && preg_match_all("/https?:\/\/[a-zAZ0-9-_\/\?&=.\+#]+/i", $post->post_title.' '.$post->post_content, $matches))
+				{
+					foreach($matches[0] as $url) {
+						if($embed = $this->oembed_get($url))
+						{
+							//print_r($embed);
+							if(isset($embed->title))
+								$body .= '&name='.$embed->title;
+							
+							if(isset($embed->thumbnail_url))
+								$body .= '&picture='.$embed->thumbnail_url;
+							else if(isset($embed->url))
+								$body .= '&picture='.$embed->url;
+							
+							if(isset($embed->html))
+							{
+								preg_match('/<embed\W*src="([^"]*)".*>/U', $embed->html, $matches);
+								if(isset($matches[1]))
+									$body .= '&source='.urlencode($matches[1]);
+							}
+							break;
+						}
+					}
+				}
 				$request = wp_remote_post('https://graph.facebook.com/me/feed', array('body' => $body, 'sslverify' => false));
-				//echo wp_remote_retrieve_body($request);
+				//echo $body;print_r(wp_remote_retrieve_body($request));exit;
 			}
 		}
 		return $post_ID;
+	}
+	
+	function oembed_get($url) {
+		require_once ABSPATH.WPINC.'/class-oembed.php';
+		$oembed = new WP_oEmbed();
+		$oembed_provider = $oembed->discover($url);
+		if($oembed_provider)
+			return $oembed->fetch($oembed_provider, $url);
+			
+		return false;
 	}
 	
 	/* Page de configuration */
@@ -289,24 +375,27 @@ class Sideblogging {
 		if(isset($_GET['debug']))
 		{
 			$options = get_option('sideblogging');
-			echo '<h3>Options enregistrées</h3>';
+			echo '<h3>'.__('Settings').'</h3>';
 			echo '<pre>';
 			print_r($options);
 			echo '</pre>';
-			if(isset($options['facebook_token']))
+			echo '<h3>Facebook</h3>';
+			if(isset($options['facebook_token']['access_token']))
 			{
-				echo '<h3>Facebook</h3>';
 				$result = wp_remote_get('https://graph.facebook.com/me?'.$options['facebook_token']['access_token'], array('sslverify' => false));
 				$me = json_decode(wp_remote_retrieve_body($result),true);
 				echo '<pre>';
 				print_r($me);
 				echo '</pre>';
 			}
-			if(isset($options['twitter_token']))
+			else
+				echo '<p>'.__('No Facebook account registered',self::domain).'.</p>';
+				
+			require_once 'libs/twitteroauth.php';
+			echo '<h3>Twitter</h3>';
+			if(isset($options['twitter_token']['oauth_token']))
 			{
-				require_once 'libs/twitteroauth.php';
-				echo '<h3>Twitter</h3>';
-				$connection = new TwitterOAuth($options['twitter_consumer_key'], $options['twitter_consumer_secret'],
+				$connection = new SidebloggingTwitterOAuth($options['twitter_consumer_key'], $options['twitter_consumer_secret'],
 							$options['twitter_token']['oauth_token'],$options['twitter_token']['oauth_token_secret']);
 				$content = $connection->get('account/rate_limit_status');
 				echo 'Quota API :'.$content->remaining_hits.' appels restants.';
@@ -315,15 +404,31 @@ class Sideblogging {
 				print_r($content);
 				echo '</pre>';
 			}
+			else
+				echo '<p>'.__('No Twitter account registered',self::domain).'.</p>';
 			
+			require_once 'libs/statusnetoauth.php';
+			echo '<h3>StatusNet</h3>';
+			if(isset($options['statusnet_token']['oauth_token']))
+			{
+				$connection = new SidebloggingStatusNetOAuth($options['statusnet_url'], $options['statusnet_consumer_key'], $options['statusnet_consumer_secret'],
+							$options['statusnet_token']['oauth_token'],$options['statusnet_token']['oauth_token_secret']);
+				$content = $connection->get('account/verify_credentials');
+				echo '<pre>';
+				print_r($content);
+				echo '</pre>';
+			}
+			else
+				echo '<p>'.__('No StatusNet account registered',self::domain).'.</p>';
+
 			echo '</div>';
 			return;
 		}
-		if(isset($_GET['oauth_verifier'])) // Twitter vérification finale
+		else if(isset($_GET['oauth_verifier']) && $_GET['site'] == 'twitter') // Twitter vérification finale
 		{
 			$options = get_option('sideblogging');
 			require_once('libs/twitteroauth.php');
-			$connection = new TwitterOAuth($options['twitter_consumer_key'], $options['twitter_consumer_secret'], get_transient('oauth_token'), get_transient('oauth_token_secret'));
+			$connection = new SidebloggingTwitterOAuth($options['twitter_consumer_key'], $options['twitter_consumer_secret'], get_transient('oauth_token'), get_transient('oauth_token_secret'));
 			$access_token = $connection->getAccessToken($_GET['oauth_verifier']);
 			
 			delete_transient('oauth_token');
@@ -341,11 +446,30 @@ class Sideblogging {
 			else
 				echo '<div class="error"><p><strong>'.__('Error during the connection with Twitter',self::domain).'.</strong></p></div>';
 		}
-		else if(isset($_GET['action']) && $_GET['action'] == 'disconnect_from_twitter' && wp_verify_nonce($_GET['_wpnonce'], 'disconnect_from_twitter')) // Déconnexion de Twitter
+		else if(isset($_GET['oauth_verifier']) && $_GET['site'] == 'statusnet') // StatusNet vérification finale
 		{
 			$options = get_option('sideblogging');
-			$options['twitter_token'] = '';
-			update_option('sideblogging',$options);
+			require_once('libs/statusnetoauth.php');
+			$connection = new SidebloggingStatusNetOAuth($options['statusnet_url'],$options['statusnet_consumer_key'], $options['statusnet_consumer_secret'], get_transient('oauth_token'), get_transient('oauth_token_secret'));
+			$access_token = $connection->getAccessToken($_GET['oauth_verifier']);
+
+			delete_transient('oauth_token');
+			delete_transient('oauth_token_secret');
+
+			if (200 == $connection->http_code)
+			{
+				$options['statusnet_token']['oauth_token'] = esc_attr($access_token['oauth_token']);
+				$options['statusnet_token']['oauth_token_secret'] = esc_attr($access_token['oauth_token_secret']);
+				
+				$content = $connection->get('account/verify_credentials');
+				$options['statusnet_token']['user_id'] = intval($content->id);
+				$options['statusnet_token']['screen_name'] = esc_attr($content->screen_name);
+				
+				update_option('sideblogging',$options);
+				echo '<div class="updated"><p><strong>'.__('StatusNet account registered',self::domain).'.</strong></p></div>';
+			}
+			else
+				echo '<div class="error"><p><strong>'.__('Error during the connection with StatusNet installation',self::domain).'.</strong></p></div>';
 		}
 		else if(isset($_GET['code'])) // Facebook vérification finale
 		{
@@ -368,33 +492,45 @@ class Sideblogging {
 			else
 				echo '<div class="error"><p><strong>'.__('Error during the connection with Facebook',self::domain).'</strong></p></div>';
 		}
+		else if(isset($_GET['action']) && $_GET['action'] == 'disconnect_from_twitter' && wp_verify_nonce($_GET['_wpnonce'], 'disconnect_from_twitter')) // Déconnexion de Twitter
+		{
+			$options = get_option('sideblogging');
+			$options['twitter_token'] = '';
+			update_option('sideblogging',$options);
+		}
+		else if(isset($_GET['action']) && $_GET['action'] == 'disconnect_from_statusnet' && wp_verify_nonce($_GET['_wpnonce'], 'disconnect_from_statusnet')) // Déconnexion de StatusNet
+		{
+			$options = get_option('sideblogging');
+			$options['statusnet_token'] = '';
+			update_option('sideblogging',$options);
+		}
 		else if(isset($_GET['action']) && $_GET['action'] == 'disconnect_from_facebook' && wp_verify_nonce($_GET['_wpnonce'], 'disconnect_from_facebook')) // Déconnexion de Facebook
 		{
 			$options = get_option('sideblogging');
 			$options['facebook_token'] = '';
 			update_option('sideblogging',$options);
 		}
-		
+
 		$options = get_option('sideblogging');
 		require_once 'libs/shortlinks.class.php';
-		
+
 		echo '<form action="options.php" method="post">';
 		settings_fields('sideblogging_settings');
-		
+
 		echo '<h3>'.__('General Settings',self::domain).'</h3>';
 
 		echo '<table class="form-table">';
-		
+
 		echo '<tr valign="top">
 		<th scope="row">
-		<label for="sideblogging_comments">'.__('Allow comments ',self::domain).'</label>
+		<label for="sideblogging_comments">'.__('Allow comments',self::domain).'</label>
 		</th><td>';
 		echo '<select name="sideblogging[comments]" id="sideblogging_comments">';
 		echo '<option value="0">OFF</option>';
-		echo '<option '.selected(1,$options['comments']).' value="1">ON</option>';
+		echo '<option '.selected(1,$options['comments'],false).' value="1">ON</option>';
 		echo '</select>';
 		echo '</td></tr>';
-				
+
 		echo '<tr valign="top">
 		<th scope="row">
 		<label for="sideblogging_purge">'.__('Purge asides older than ',self::domain).'</label>
@@ -410,23 +546,40 @@ class Sideblogging {
 		echo '<option value="native">Native</option>';
 		foreach(Shortlinks::getSupportedServices() as $id => $name)
 		{
-			echo '<option '.selected($id,$options['shortener']).' value="'.$id.'">'.$name.'</option>';
+			echo '<option '.selected($id,$options['shortener'],false).' value="'.$id.'">'.$name.'</option>';
 		}
 		echo '</select>';
 		echo '</td></tr>';
 		
-		if($options['shortener'] == 'bitly')
+		echo '<tr valign="top">
+		<th scope="row">
+		<label for="sideblogging_imagedir">'.__('Images directory',self::domain).'</label>
+		</th><td>';
+		echo '<input type="text" size="70" value="'.$options['imagedir'].'" name="sideblogging[imagedir]" id="sideblogging_imagedir" />';
+		echo ' <a href="#" onclick="document.getElementById(\'sideblogging_imagedir\').value = \''.SIDEBLOGGING_URL.'/images/\';return false;">default</a>';
+		echo ' <a href="#" onclick="document.getElementById(\'sideblogging_imagedir\').value = \''.get_bloginfo('stylesheet_directory').'\';return false;">theme</a>';
+		echo '</td></tr>';
+		
+		echo '<tr valign="top">
+		<th scope="row">
+		<label for="sideblogging_slug">'.__('Permalinks prefix',self::domain).'</label>
+		</th><td>';
+		echo '<input type="text" size="20" value="'.(isset($options['slug']) ? $options['slug'] : 'asides').'" name="sideblogging[slug]" id="sideblogging_slug" />';
+		echo ' <a href="#" onclick="document.getElementById(\'sideblogging_slug\').value = \'asides\';return false;">asides</a>';
+		echo '</td></tr>';
+		
+		if(in_array($options['shortener'],array('bitly','jmp')))
 		{
 			echo '<tr valign="top">
 			<th scope="row">
-			<label for="sideblogging_shortener_login">Bit.ly Login</label>
+			<label for="sideblogging_shortener_login">API Login</label>
 			</th><td>';
 			echo '<input type="text" class="regular-text" value="'.$options['shortener_login'].'" name="sideblogging[shortener_login]" id="sideblogging_shortener_login" />';
 			echo '</td></tr>';
 					
 			echo '<tr valign="top">
 			<th scope="row">
-			<label for="sideblogging_shortener_password">Bit.ly API Key</label>
+			<label for="sideblogging_shortener_password">API Key</label>
 			</th><td>';
 			echo '<input type="text" class="regular-text" value="'.$options['shortener_password'].'" name="sideblogging[shortener_password]" id="sideblogging_shortener_password" />';
 			echo ' (<a target="_blank" href="http://bit.ly/a/your_api_key">'.__('Find your key',self::domain).'</a>)</td></tr>';
@@ -436,13 +589,13 @@ class Sideblogging {
 		echo '<h3>'.__('Applications Settings',self::domain).'</h3>';
 
 		echo '<table class="form-table">';
+		
 		echo '<tr valign="top">
 		<th scope="row">
 		<label for="sideblogging_twitter_consumer_key">Twitter Consumer Key</label>
 		</th><td>';
 		echo '<input type="text" class="regular-text" value="'.$options['twitter_consumer_key'].'" name="sideblogging[twitter_consumer_key]" id="sideblogging_twitter_consumer_key" />';
 		echo '</td></tr>';
-		
 		echo '<tr valign="top">
 		<th scope="row">
 		<label for="sideblogging_twitter_consumer_secret">Twitter Consumer Secret</label>
@@ -456,21 +609,42 @@ class Sideblogging {
 		</th><td>';
 		echo '<input type="text" class="regular-text" value="'.$options['facebook_consumer_key'].'" name="sideblogging[facebook_consumer_key]" id="sideblogging_facebook_consumer_key" />';
 		echo '</td></tr>';
-		
 		echo '<tr valign="top">
 		<th scope="row">
 		<label for="sideblogging_facebook_consumer_secret">Facebook Secret Key</label>
 		</th><td>';
 		echo '<input type="text" class="regular-text" value="'.$options['facebook_consumer_secret'].'" name="sideblogging[facebook_consumer_secret]" id="sideblogging_facebook_consumer_secret" />';
 		echo '</td></tr>';
+		
+		echo '<tr valign="top">
+		<th scope="row">
+		<label for="sideblogging_statusnet_url">StatusNet URL</label>
+		</th><td>';
+		echo '<input type="text" class="regular-text" value="'.$options['statusnet_url'].'" name="sideblogging[statusnet_url]" id="sideblogging_statusnet_url" />';
+		echo ' <a href="#" onclick="document.getElementById(\'sideblogging_statusnet_url\').value = \'http://identi.ca/\';return false;">Identi.ca</a>';
+		echo '</td></tr>';
+		echo '<tr valign="top">
+		<th scope="row">
+		<label for="sideblogging_statusnet_consumer_key">StatusNet Consumer Key</label>
+		</th><td>';
+		echo '<input type="text" class="regular-text" value="'.$options['statusnet_consumer_key'].'" name="sideblogging[statusnet_consumer_key]" id="sideblogging_statusnet_consumer_key" />';
+		echo '</td></tr>';
+		echo '<tr valign="top">
+		<th scope="row">
+		<label for="sideblogging_statusnet_consumer_secret">StatusNet Consumer Secret</label>
+		</th><td>';
+		echo '<input type="text" class="regular-text" value="'.$options['statusnet_consumer_secret'].'" name="sideblogging[statusnet_consumer_secret]" id="sideblogging_statusnet_consumer_secret" />';
+		echo '</td></tr>';
+		
 		echo '</table>';
 		
-
 		echo '<p>'.__('Don\'t forget to look at the contextual help (in the top right of page) for more informations about keys.',self::domain).'</p>';
 		echo '<p class="submit"><input type="submit" class="button-primary" value="'.__('Save Changes').'" /></p>';
 		
 		echo '</form>';
 		
+		
+		// Twitter
 		echo '<h3>'.__('Republish on Twitter',self::domain).'</h3>';
 
 		if(empty($options['twitter_consumer_key']) || empty($options['twitter_consumer_secret']))
@@ -490,13 +664,13 @@ class Sideblogging {
 			echo '<a href="'.wp_nonce_url('options-general.php?page=sideblogging&action=disconnect_from_twitter','disconnect_from_twitter').'">'.__('Change account or disable',self::domain).'</a>.</p>';
 		}
 		
-
+		// Facebook
 		echo '<h3>'.__('Republish on Facebook',self::domain).'</h3>';
 
-                if(!extension_loaded('openssl'))
-                {
-                        echo '<p>'.__('Sorry, you need OpenSLL to connect with Facebook',self::domain).'.</p>';
-                }
+		if(!extension_loaded('openssl'))
+		{
+			echo '<p>'.__('Sorry, you need OpenSLL to connect with Facebook',self::domain).'.</p>';
+		}
 		else if(empty($options['facebook_consumer_key']) || empty($options['facebook_consumer_secret']))
 		{
 			echo '<p>'.__('You must configure Facebook app to be able to sign-in',self::domain).'.</p>';
@@ -513,6 +687,26 @@ class Sideblogging {
 			echo '<p>'.sprintf(__('You are connected to Facebook as %s',self::domain),'<strong>'.$options['facebook_token']['name'].'</strong>').'. ';
 			echo '<a href="'.wp_nonce_url('options-general.php?page=sideblogging&action=disconnect_from_facebook','disconnect_from_facebook').'">'.__('Change account or disable',self::domain).'</a>.</p>';
 		}
+		
+		// StatusNet
+		echo '<h3>'.__('Republish on a Identi.ca (or other StatusNet installation)',self::domain).'</h3>';
+		if(empty($options['statusnet_url']) || empty($options['statusnet_consumer_key']) || empty($options['statusnet_consumer_secret']))
+		{
+			echo '<p>'.__('You must configure StatusNet app to be able to sign-in',self::domain).'.</p>';
+		}
+		else if(empty($options['statusnet_token']))
+		{
+			echo '<p>'.__('To automatically publish your asides on StatusNet, sign-in below:',self::domain).'</p>';
+			echo '<p><a href="'.wp_nonce_url('options-general.php?page=sideblogging&action=connect_to_statusnet','connect_to_statusnet').'">
+				<img src="'.SIDEBLOGGING_URL.'/images/statusnet.png" alt="Connexion à StatusNet" />
+				</a></p>';
+		}
+		else
+		{
+			echo '<p>'.sprintf(__('You are connected to StatusNet as %s',self::domain),'<strong>@'.$options['statusnet_token']['screen_name'].'</strong>').'. ';
+			echo '<a href="'.wp_nonce_url('options-general.php?page=sideblogging&action=disconnect_from_statusnet','disconnect_from_statusnet').'">'.__('Change account or disable',self::domain).'</a>.</p>';
+		}
+		
 		echo '</div>';
 	}
 	
@@ -531,16 +725,30 @@ class Sideblogging {
 
 		if($options_old['facebook_consumer_key'] != $options['facebook_consumer_key'] || $options_old['facebook_consumer_secret'] != $options['facebook_consumer_secret'])
 			$options['facebook_token'] = '';
+			
+		if($options_old['statusnet_url'] != $options['statusnet_url'] || $options_old['statusnet_consumer_key'] != $options['statusnet_consumer_key'] || $options_old['statusnet_consumer_secret'] != $options['statusnet_consumer_secret'])
+			$options['statusnet_token'] = '';
 
 		// Clean form option
 		$options['twitter_consumer_key'] = esc_attr($options['twitter_consumer_key']);
 		$options['twitter_consumer_secret'] = esc_attr($options['twitter_consumer_secret']);
 		$options['facebook_consumer_key'] = esc_attr($options['facebook_consumer_key']);
 		$options['facebook_consumer_secret'] = esc_attr($options['facebook_consumer_secret']);
+		$options['statusnet_url'] = esc_attr($options['statusnet_url']);
+		$options['statusnet_consumer_key'] = esc_attr($options['statusnet_consumer_key']);
+		$options['statusnet_consumer_secret'] = esc_attr($options['statusnet_consumer_secret']);
 		
+		$options['slug'] = (!empty($options['slug'])) ? esc_attr($options['slug']) : 'asides';
 		$options['shortener'] = esc_attr($options['shortener']);
 		$options['shortener_login'] = (isset($options['shortener_login'])) ? esc_attr($options['shortener_login']) : $options_old['shortener_login'];
 		$options['shortener_password'] = (isset($options['shortener_password'])) ? esc_attr($options['shortener_password']) : $options_old['shortener_password'];
+		
+		// Directory must always end with a /
+		if(isset($options['imagedir']) && strlen($options['imagedir']) > 0)
+		{
+			if(substr($options['imagedir'], -1) != '/' && substr($options['imagedir'], -1) != '\\')
+				$options['imagedir'] .= '/';
+		}
 
 		$options['purge'] = (is_numeric($options['purge'])) ? intval($options['purge']) : 0;
 		
@@ -554,12 +762,19 @@ class Sideblogging {
 	function post_type_asides() {
 		
 		$options = get_option('sideblogging');
+
 		$supports = array('title','editor');
 		
 		if(isset($options['comments']) && $options['comments'] == 1)
 			$supports[] = 'comments';
+			
+		if(isset($options['slug']) && !empty($options['slug']))
+			$rewrite = array('slug' => $options['slug']);
+		else
+			$rewrite = array('slug' => 'asides');
+		
 
-		register_post_type( 'asides',
+		register_post_type('asides',
 			array(
 				'label' => __('Asides',self::domain),
 				'singular_label' => __('Aside',self::domain),
@@ -576,16 +791,22 @@ class Sideblogging {
 					'search_items' => __('Search asides',self::domain),
 				),
 				'supports' => $supports,
-				//'rewrite' => array('slug' => 'asides'),
+				'rewrite' => $rewrite,
 			)
 		);
 	}
 	
 	function custom_rewrite_rules($wp_rewrite) {
+		$options = get_option('sideblogging');
+		if(isset($options['slug']) && !empty($options['slug']))
+			$slug = $options['slug'];
+		else
+			$slug = 'asides';
+			
 		$new_rules = array();
-		$new_rules['asides/page/?([0-9]{1,})/?$'] = 'index.php?post_type=asides&paged=' . $wp_rewrite->preg_index(1);
-		$new_rules['asides/(feed|rdf|rss|rss2|atom)/?$'] = 'index.php?post_type=asides&feed=' . $wp_rewrite->preg_index(1);
-		$new_rules['asides/?$'] = 'index.php?post_type=asides';
+		$new_rules[$slug.'/page/?([0-9]{1,})/?$'] = 'index.php?post_type=asides&paged=' . $wp_rewrite->preg_index(1);
+		$new_rules[$slug.'/(feed|rdf|rss|rss2|atom)/?$'] = 'index.php?post_type=asides&feed=' . $wp_rewrite->preg_index(1);
+		$new_rules[$slug.'/?$'] = 'index.php?post_type=asides';
 
 		$wp_rewrite->rules = array_merge($new_rules, $wp_rewrite->rules);
 				
