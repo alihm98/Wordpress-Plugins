@@ -56,7 +56,7 @@ SideBlogging 0.7.1
 Display asides in a widget. They can automatically be published to Twitter, Facebook, and any Status.net installation (like identi.ca).  
 [Voir le code source](http://github.com/cedbv/Wordpress-Plugins/tree/master/sideblogging/) - [Télécharger](http://github.com/cedbv/Wordpress-Plugins/raw/master/download/sideblogging.zip)
 
-Skyrock Blog Importer 0.1
+Skyrock Blog Importer 0.2
 ------------------------
 Importe un Skyrock Blog dans Wordpress.  
 [Voir le code source](http://github.com/cedbv/Wordpress-Plugins/tree/master/skyrock-blog-importer/) - [Télécharger](http://github.com/cedbv/Wordpress-Plugins/raw/master/download/skyrock-blog-importer.zip)
