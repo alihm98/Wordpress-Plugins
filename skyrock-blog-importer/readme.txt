@@ -10,7 +10,7 @@ Import posts, tags, comments, images and videos from a Skyrock Blog (a french bl
 
 == Description ==
 
-The Skyrock Blog will import the following content from an online Skyrock Blog :
+The Skyrock Blog Importer will import the following content from an online Skyrock Blog :
 
 * Posts
 * Tags
